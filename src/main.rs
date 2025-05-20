@@ -3,30 +3,43 @@ use i3ipc::event::Event;
 use i3ipc::reply::{Node, NodeLayout};
 use i3ipc::{I3Connection, I3EventListener, Subscription};
 use std::cmp::Ordering;
-use std::{env, process};
 use std::fs::File;
 use std::io::Write;
 use std::process::exit;
+use std::{env, process};
 
 fn set_layout(conn: &mut I3Connection) {
-    let tree = conn.get_tree().expect("Failed to get tree");
-    let (focused, parent) = find_focused(&tree, None);
-    if parent.is_some() {
-        match parent.unwrap().layout {
-            NodeLayout::Stacked | NodeLayout::Tabbed => {}
-            _ => {
-                // height > width
-                if focused.rect.3 > focused.rect.2 {
-                    if parent.unwrap().layout == NodeLayout::SplitH {
-                        conn.run_command("split v").expect("Error setting layout");
-                    }
-                } else {
-                    if parent.unwrap().layout == NodeLayout::SplitV {
-                        conn.run_command("split h").expect("Error setting layout");
+    match conn.get_tree() {
+        Ok(tree) => {
+            let (focused, parent_opt) = find_focused(&tree, None);
+            match parent_opt {
+                None => {}
+                Some(parent) => {
+                    match parent.layout {
+                        NodeLayout::Stacked | NodeLayout::Tabbed => {}
+                        _ => {
+                            // height > width
+                            if focused.rect.3 > focused.rect.2 {
+                                if parent.layout == NodeLayout::SplitH {
+                                    match conn.run_command("split v") {
+                                        Ok(_) => {}
+                                        Err(err) => eprintln!("Error setting layout to vertical\n{}", err)
+                                    }
+                                }
+                            } else {
+                                if parent.layout == NodeLayout::SplitV {
+                                    match conn.run_command("split h") {
+                                        Ok(_) => {}
+                                        Err(err) => eprintln!("Error setting layout to horizontal\n{}", err)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+        Err(err) => eprintln!("Error getting i3 window tree\n{}", err)
     }
 }
 
@@ -72,27 +85,35 @@ fn main() {
     }
 
     if pid_file.is_some() {
-        let mut file = File::create(pid_file.unwrap())
-            .expect("Failed to create or open file");
-        let pid = process::id();
-        let pid = pid.to_string();
-        file.write_all(pid.as_bytes())
-            .expect("Failed to write PID file");
+        match File::create(pid_file.unwrap()) {
+            Ok(mut file) => {
+                let pid = process::id();
+                let pid = pid.to_string();
+                match file.write_all(pid.as_bytes()) {
+                    Ok(_) => {}
+                    Err(err) => eprintln!("Failed to write PID file\n{}", err)
+                }
+            }
+            Err(err) => eprintln!("Error creating pid file\n{}", err),
+        }
     }
 
-    let mut connection = I3Connection::connect().expect("Failed to connect to i3");
+    let mut connection = I3Connection::connect().expect("Failed to connect to i3, is i3 running?");
     let mut event_listener = I3EventListener::connect().expect("Failed to connect to i3 events");
     let subs = [ Subscription::Window ];
-    event_listener.subscribe(&subs).expect("Failed to subscribe to events");
+    event_listener.subscribe(&subs).expect("Failed to subscribe to i3 events");
     for event_result in event_listener.listen() {
-        let event: Event = event_result.expect("Failed to get event");
-        match event {
-            Event::WindowEvent(info) => 
-                match info.change {
-                    WindowChange::Focus => set_layout(&mut connection),
+        match event_result {
+            Ok(event) => 
+                match event {
+                    Event::WindowEvent(info) =>
+                        match info.change {
+                            WindowChange::Focus => set_layout(&mut connection),
+                            _ => {}
+                        }
                     _ => {}
                 }
-            _ => {}
+            Err(err) => eprintln!("Error getting event from i3\n{}", err)
         }
     }
 }
