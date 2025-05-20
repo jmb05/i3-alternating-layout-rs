@@ -52,7 +52,8 @@ fn find_focused<'a>(tree: &'a Node, parent: Option<&'a Node>) -> (&'a Node, Opti
 
 fn print_help(args: &Vec<String>) {
     println!("Usage: {} [-p PIDFILE]\n", args[0]);
-    println!("Options:\n    -p PIDFILE    Saves the PID for this program in the filename specified\n")
+    println!("Options:\n    -p PIDFILE    Saves the PID for this program in the filename specified\n");
+    println!("    -h, --help    Print this help info");
 }
 
 fn main() {
@@ -61,7 +62,7 @@ fn main() {
     let mut pid_file: Option<&String> = None;
 
     for arg in &args[1..] {
-        if arg == "-h" {
+        if arg == "-h" || arg == "--help" {
             print_help(&args);
             exit(0);
         }
@@ -86,14 +87,11 @@ fn main() {
     for event_result in event_listener.listen() {
         let event: Event = event_result.expect("Failed to get event");
         match event {
-            Event::WindowEvent(info) => {
+            Event::WindowEvent(info) => 
                 match info.change {
-                    WindowChange::Focus => {
-                        set_layout(&mut connection);
-                    }
+                    WindowChange::Focus => set_layout(&mut connection),
                     _ => {}
                 }
-            }
             _ => {}
         }
     }
